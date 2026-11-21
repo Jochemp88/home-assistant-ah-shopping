@@ -1,8 +1,9 @@
 import asyncio
+from datetime import datetime, timedelta
 
 from custom_components.ah_shopping.api import AhShoppingApiClient
 from custom_components.ah_shopping.exceptions import AhAuthError, AhRequestError
-from custom_components.ah_shopping.models import NextOrderData, NextOrderItem
+from custom_components.ah_shopping.models import AH_TIMEZONE, NextOrderData, NextOrderItem
 
 # A fixed past winter day: track & trace is queried (not a future order) and UTC+1 applies.
 TODAY = "2026-11-08"
@@ -76,6 +77,23 @@ def test_auth_errors_in_extras_are_not_swallowed():
 
 def test_track_and_trace_is_skipped_before_delivery_day():
     client = _client(EXTRAS, delivery_date="2999-01-01")
+    asyncio.run(client.async_get_next_order())
+    assert "FetchOrderTrackTrace" not in [name for name, _ in client.queries]
+
+
+def test_track_and_trace_is_queried_the_day_before_delivery():
+    tomorrow = (datetime.now(AH_TIMEZONE).date() + timedelta(days=1)).isoformat()
+    answers = dict(EXTRAS, FetchOrderTrackTrace={"order": {"delivery": {"trackAndTraceV2": {
+        "type": "PLANNED", "message": "", "etaBlock": {"range": {"start": f"{tomorrow}T18:20:00Z", "end": f"{tomorrow}T19:20:00Z"}}}}}})
+    client = _client(answers, delivery_date=tomorrow, period={"startDateTime": f"{tomorrow}T19:00:00", "endDateTime": f"{tomorrow}T21:00:00"})
+    data = asyncio.run(client.async_get_next_order()).as_dict()
+    assert ("FetchOrderTrackTrace", {"orderId": 300}) in client.queries
+    assert data["expected_time_display"] != ""
+
+
+def test_track_and_trace_is_skipped_two_days_before_delivery():
+    later = (datetime.now(AH_TIMEZONE).date() + timedelta(days=2)).isoformat()
+    client = _client(EXTRAS, delivery_date=later)
     asyncio.run(client.async_get_next_order())
     assert "FetchOrderTrackTrace" not in [name for name, _ in client.queries]
 

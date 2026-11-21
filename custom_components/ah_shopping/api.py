@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import time
@@ -373,8 +373,9 @@ class AhShoppingApiClient:
             return None
 
         # The live ETA only exists around delivery day (AH's dates are Dutch); skip the call otherwise.
-        today = datetime.now(AH_TIMEZONE).date().isoformat()
-        track = not delivery_date or delivery_date <= today
+        # AH already narrows the window the day before, once the order has gone to the carrier.
+        tomorrow = (datetime.now(AH_TIMEZONE).date() + timedelta(days=1)).isoformat()
+        track = not delivery_date or delivery_date <= tomorrow
         # The three requests are independent, so run them together.
         discount_data, tracking_data, limits_data = await asyncio.gather(
             optional("order discount", ORDER_DISCOUNT_QUERY),
